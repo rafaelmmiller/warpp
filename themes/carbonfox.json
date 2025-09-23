@@ -1,0 +1,13 @@
+{
+  "name": "carbonfox",
+  "primary": "#78a9ff",
+  "secondary": "#be95ff",
+  "background": "#161616", 
+  "text": "#dfdfe0",
+  "muted": "#6f6f6f",
+  "success": "#25be6a",
+  "warning": "#ff9500",
+  "error": "#ee5396",
+  "border": "#393939",
+  "cursor": "#33b1ff"
+}

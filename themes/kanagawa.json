@@ -1,0 +1,13 @@
+{
+  "name": "kanagawa",
+  "primary": "#7fb4ca",
+  "secondary": "#957fb8",
+  "background": "#1f1f28",
+  "text": "#dcd7ba", 
+  "muted": "#727169",
+  "success": "#98bb6c",
+  "warning": "#ff9e3b",
+  "error": "#c34043",
+  "border": "#54546d",
+  "cursor": "#658594"
+}

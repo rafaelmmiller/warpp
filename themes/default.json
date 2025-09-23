@@ -1,0 +1,13 @@
+{
+  "name": "default",
+  "primary": "#ffffff",
+  "secondary": "#cccccc", 
+  "background": "#000000",
+  "text": "#ffffff",
+  "muted": "#888888",
+  "success": "#00ff00",
+  "warning": "#ffff00",
+  "error": "#ff0000",
+  "border": "#444444",
+  "cursor": "#ffffff"
+}

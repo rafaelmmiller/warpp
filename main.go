@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -260,7 +261,7 @@ func printHelp() {
 	fmt.Println("  tmlaunch --version     Show version")
 	fmt.Println()
 	fmt.Println("Config file location: ~/.config/tmlaunch/config.json")
-	fmt.Println("Available themes: default, carbonfox, kanagawa")
+	fmt.Printf("Available themes: %s\n", strings.Join(themes.ListAvailableThemes(), ", "))
 	fmt.Println("Available ASCII art: tmlaunch, simple, minimal, blocks")
 }
 
