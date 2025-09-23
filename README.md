@@ -2,6 +2,8 @@
 
 A beautiful terminal user interface for managing and launching tmuxifier sessions.
 
+![TMlaunch Preview](assets/tmlaunch-preview.png)
+
 ## Features
 
 - 🎨 **Beautiful TUI** - Clean, modern interface built with Bubble Tea
