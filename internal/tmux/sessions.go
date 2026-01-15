@@ -1,23 +1,28 @@
 package tmux
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 type Session struct {
-	Name        string
-	Description string
-	IsRunning   bool
-	ProjectType string // detected from layout or directory
-	Icon        string // emoji for project type
+	Name         string
+	Description  string
+	IsRunning    bool
+	IsLayout     bool   // true if this is a layout entry (not a running session)
+	ProjectRoot  string // parsed from session_root in layout file
+	ProjectType  string // detected from layout or directory
+	Icon         string // emoji for project type
+	ClaudeStatus string // "executing", "idle", or "" (no Claude)
 }
 
-// GetTmuxifierLayouts returns all available tmuxifier layouts
-func GetTmuxifierLayouts() ([]Session, error) {
+// GetAllSessions returns running sessions (first) + layouts (second) as separate entries
+func GetAllSessions() ([]Session, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -29,11 +34,15 @@ func GetTmuxifierLayouts() ([]Session, error) {
 		return nil, err
 	}
 
-	var sessions []Session
-	runningSessions := getRunningTmuxSessions()
+	var runningSessions []Session
+	var layouts []Session
+	runningNames := getRunningTmuxSessions()
+	layoutNames := make(map[string]bool)
+	claudeStatus := GetClaudeSessionStatus() // Get claude status for all sessions at once
 
+	// First, collect all tmuxifier layouts
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".session.sh") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".session.sh") || e.Name() == "new-session.session.sh" {
 			continue
 		}
 
@@ -42,26 +51,53 @@ func GetTmuxifierLayouts() ([]Session, error) {
 			continue
 		}
 
-		session := Session{
+		layoutNames[name] = true
+		layoutPath := filepath.Join(layoutsDir, e.Name())
+		layouts = append(layouts, Session{
 			Name:        name,
-			Description: getSessionDescription(filepath.Join(layoutsDir, e.Name())),
-			IsRunning:   contains(runningSessions, name),
+			Description: getSessionDescription(layoutPath),
+			IsRunning:   false,
+			IsLayout:    true,
+			ProjectRoot: getSessionRoot(layoutPath, home),
 			ProjectType: detectProjectType(name),
-			Icon:        getProjectIcon(name),
-		}
-
-		sessions = append(sessions, session)
+			Icon:        "•",
+		})
 	}
 
-	sort.Slice(sessions, func(i, j int) bool {
-		// Running sessions first, then alphabetical
-		if sessions[i].IsRunning != sessions[j].IsRunning {
-			return sessions[i].IsRunning
+	// Then, collect all running tmux sessions
+	for _, runningName := range runningNames {
+		session := Session{
+			Name:         runningName,
+			IsRunning:    true,
+			IsLayout:     false,
+			Icon:         "•",
+			ClaudeStatus: claudeStatus[runningName],
 		}
-		return sessions[i].Name < sessions[j].Name
+		if layoutNames[runningName] {
+			// Has a layout - get description from it
+			layoutPath := filepath.Join(layoutsDir, runningName+".session.sh")
+			session.Description = getSessionDescription(layoutPath)
+			session.ProjectRoot = getSessionRoot(layoutPath, home)
+			session.ProjectType = detectProjectType(runningName)
+		} else {
+			// Orphan session
+			session.Description = "(no layout)"
+			session.ProjectType = "Orphan"
+			session.Icon = "○"
+		}
+		runningSessions = append(runningSessions, session)
+	}
+
+	// Sort each group alphabetically
+	sort.Slice(runningSessions, func(i, j int) bool {
+		return runningSessions[i].Name < runningSessions[j].Name
+	})
+	sort.Slice(layouts, func(i, j int) bool {
+		return layouts[i].Name < layouts[j].Name
 	})
 
-	return sessions, nil
+	// Combine: running sessions first, then layouts
+	return append(runningSessions, layouts...), nil
 }
 
 // getRunningTmuxSessions returns list of currently running tmux sessions
@@ -82,9 +118,47 @@ func getRunningTmuxSessions() []string {
 	return sessions
 }
 
+// getSessionRoot extracts the default session_root path from a layout file
+// Parses patterns like: session_root "${SESSION_ROOT:-~/path}" or session_root "~/path"
+func getSessionRoot(layoutPath string, home string) string {
+	content, err := os.ReadFile(layoutPath)
+	if err != nil {
+		return ""
+	}
+
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "session_root ") {
+			// Extract the argument
+			arg := strings.TrimPrefix(line, "session_root ")
+			arg = strings.Trim(arg, "\"'")
+
+			// Handle ${SESSION_ROOT:-default} pattern
+			if strings.HasPrefix(arg, "${SESSION_ROOT:-") && strings.HasSuffix(arg, "}") {
+				arg = strings.TrimPrefix(arg, "${SESSION_ROOT:-")
+				arg = strings.TrimSuffix(arg, "}")
+			}
+
+			// Skip if it's a variable reference we can't resolve
+			if strings.HasPrefix(arg, "$") {
+				return ""
+			}
+
+			// Expand ~ to home directory
+			if strings.HasPrefix(arg, "~") {
+				arg = filepath.Join(home, strings.TrimPrefix(arg, "~"))
+			}
+
+			return arg
+		}
+	}
+	return ""
+}
+
 // getSessionDescription extracts description from session file comments
-func getSessionDescription(filepath string) string {
-	content, err := os.ReadFile(filepath)
+func getSessionDescription(layoutPath string) string {
+	content, err := os.ReadFile(layoutPath)
 	if err != nil {
 		return ""
 	}
@@ -150,4 +224,173 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// KillSession kills a running tmux session
+func KillSession(name string) error {
+	cmd := exec.Command("tmux", "kill-session", "-t", name)
+	return cmd.Run()
+}
+
+// IsGitRepo checks if a directory is a git repository
+func IsGitRepo(path string) bool {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
+	return cmd.Run() == nil
+}
+
+// CreateWorktree creates a new git worktree with a new branch
+// Returns the path to the new worktree
+func CreateWorktree(basePath, newDirName, branchName string) (string, error) {
+	// Worktree goes in sibling directory
+	parentDir := filepath.Dir(basePath)
+	worktreePath := filepath.Join(parentDir, newDirName)
+
+	// Create worktree with new branch
+	cmd := exec.Command("git", "-C", basePath, "worktree", "add", "-b", branchName, worktreePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to create worktree: %s", string(output))
+	}
+
+	return worktreePath, nil
+}
+
+// GetRunningSessionNames returns a list of running tmux session names (exported for use in main.go)
+func GetRunningSessionNames() []string {
+	return getRunningTmuxSessions()
+}
+
+// CapturePane captures the content of a tmux session's active pane
+func CapturePane(sessionName string, height int) string {
+	// Capture the last N lines from the active pane with ANSI escape sequences (-e)
+	cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p", "-e", "-S", fmt.Sprintf("-%d", height))
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(output)
+}
+
+// PaneInfo holds information about a single pane
+type PaneInfo struct {
+	Index   int
+	Width   int
+	Height  int
+	Content string
+}
+
+// GetSessionPanes returns all panes in the active window of a session
+func GetSessionPanes(sessionName string) []PaneInfo {
+	// List all panes in the session's current window
+	cmd := exec.Command("tmux", "list-panes", "-t", sessionName, "-F", "#{pane_index}")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var panes []PaneInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
+		}
+		var idx int
+		fmt.Sscanf(line, "%d", &idx)
+		panes = append(panes, PaneInfo{Index: idx})
+	}
+
+	return panes
+}
+
+// CapturePaneByIndex captures content from a specific pane
+func CapturePaneByIndex(sessionName string, paneIndex int, height int) string {
+	target := fmt.Sprintf("%s:.%d", sessionName, paneIndex)
+	// Use -e to preserve ANSI escape sequences (colors)
+	cmd := exec.Command("tmux", "capture-pane", "-t", target, "-p", "-e", "-S", fmt.Sprintf("-%d", height))
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(output)
+}
+
+// capturePanePlain captures content from a specific pane without ANSI codes (for text matching)
+func capturePanePlain(sessionName string, paneIndex int, height int) string {
+	target := fmt.Sprintf("%s:.%d", sessionName, paneIndex)
+	cmd := exec.Command("tmux", "capture-pane", "-t", target, "-p", "-S", fmt.Sprintf("-%d", height))
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(output)
+}
+
+// GetClaudeSessionStatus returns a map of session name -> claude status
+// Uses process TTY matching for reliable detection
+func GetClaudeSessionStatus() map[string]string {
+	result := make(map[string]string)
+
+	// Step 1: Get all claude CLI processes and their TTYs
+	cmd := exec.Command("ps", "aux")
+	output, err := cmd.Output()
+	if err != nil {
+		return result
+	}
+
+	// Find claude processes and extract TTYs
+	claudeTTYs := make(map[string]bool)
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		// Match "claude" but not "Claude.app"
+		if strings.Contains(line, "claude") && !strings.Contains(line, "Claude.app") && !strings.Contains(line, "grep") {
+			fields := strings.Fields(line)
+			if len(fields) >= 7 {
+				tty := fields[6] // TTY column
+				claudeTTYs[tty] = true
+			}
+		}
+	}
+
+	// Step 2: Map TTYs to tmux sessions
+	cmd = exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name} #{pane_tty} #{pane_index}")
+	output, err = cmd.Output()
+	if err != nil {
+		return result
+	}
+
+	sessionPanes := make(map[string][]int) // session -> list of pane indices with claude
+	lines = strings.Split(string(output), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			sessionName := fields[0]
+			paneTTY := fields[1] // e.g., /dev/ttys044
+			paneIdx, _ := strconv.Atoi(fields[2])
+
+			// Convert TTY format: /dev/ttys044 -> s044
+			shortTTY := strings.TrimPrefix(paneTTY, "/dev/tty")
+
+			if claudeTTYs[shortTTY] {
+				sessionPanes[sessionName] = append(sessionPanes[sessionName], paneIdx)
+			}
+		}
+	}
+
+	// Step 3: For each session with claude, check if executing or idle
+	for sessionName, paneIndices := range sessionPanes {
+		status := "idle" // default to idle
+
+		for _, paneIdx := range paneIndices {
+			content := capturePanePlain(sessionName, paneIdx, 15)
+			// Check for active status line: "· <status>… (esc to interrupt"
+			// This only appears when Claude is actively working, not in scrollback
+			if strings.Contains(content, "(esc to interrupt") {
+				status = "executing"
+				break
+			}
+		}
+
+		result[sessionName] = status
+	}
+
+	return result
 }

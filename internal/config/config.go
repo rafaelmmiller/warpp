@@ -15,11 +15,11 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Theme:    "default",
-		ASCIIArt: "tmlaunch",
+		ASCIIArt: "fire",
 	}
 }
 
-// LoadConfig loads configuration from ~/.config/tmlaunch/config.json
+// LoadConfig loads configuration from ~/.config/warpp/config.json
 func LoadConfig() (Config, error) {
 	configPath, err := getConfigPath()
 	if err != nil {
@@ -44,7 +44,7 @@ func LoadConfig() (Config, error) {
 	return config, nil
 }
 
-// SaveConfig saves configuration to ~/.config/tmlaunch/config.json
+// SaveConfig saves configuration to ~/.config/warpp/config.json
 func SaveConfig(config Config) error {
 	configPath, err := getConfigPath()
 	if err != nil {
@@ -71,5 +71,5 @@ func getConfigPath() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(home, ".config", "tmlaunch", "config.json"), nil
+	return filepath.Join(home, ".config", "warpp", "config.json"), nil
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"tmlaunch/internal/themes"
-	"tmlaunch/internal/tmux"
+	"warpp/internal/themes"
+	"warpp/internal/tmux"
 )
 
 type Model struct {

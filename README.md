@@ -1,17 +1,17 @@
-# TMlaunch
+# warpp
 
-A beautiful terminal user interface for managing and launching tmuxifier sessions.
+Warp into your tmux sessions. A beautiful terminal UI for managing and launching tmuxifier sessions with live previews and animated ASCII art.
 
-![TMlaunch Preview](assets/tmlaunch-preview.png)
+![warpp Preview](assets/tmlaunch-preview.png)
 
 ## Features
 
-- 🎨 **Beautiful TUI** - Clean, modern interface built with Bubble Tea
-- 📋 **Session Overview** - View all your tmuxifier layouts at a glance
-- 🟢 **Live Status** - See which sessions are currently running
-- 🚀 **Quick Launch** - Launch sessions with a single keypress
-- 📝 **Descriptions** - Shows session descriptions from layout comments
-- 🎯 **Smart Sorting** - Running sessions appear first, then alphabetical
+- **Live Session Previews** - See what's happening in your sessions in real-time
+- **Animated ASCII Art** - Firecrawl-style fire animation header
+- **Claude Code Detection** - Shows spinner when Claude is executing in a session
+- **Worktree Support** - Create git worktree sessions on the fly
+- **Themeable** - Multiple color themes included
+- **Smart Sorting** - Running sessions appear first
 
 ## Prerequisites
 
@@ -24,141 +24,83 @@ A beautiful terminal user interface for managing and launching tmuxifier session
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd tmlaunch
+cd warpp
 
-# Build the application
-go build -o tmlaunch .
-
-# Move to your PATH (optional)
-mv tmlaunch /usr/local/bin/
+# Build and install
+make install
 ```
 
-## How it Works
-
-TMlaunch integrates seamlessly with your existing tmuxifier setup:
-
-1. **Scans** your `~/.tmuxifier/layouts/` directory for `.session.sh` files
-2. **Checks** which sessions are currently running via `tmux list-sessions`
-3. **Displays** all sessions with their status in a beautiful TUI
-4. **Launches** selected sessions using `tmuxifier load-session`
-5. **Attaches** to the session (or switches if already in tmux)
+This installs `warpp` to `/usr/local/bin/`. If `wp` command doesn't exist on your system, it also creates a `wp` symlink for convenience.
 
 ## Usage
 
-### Basic Usage
-
 ```bash
-tmlaunch                # Launch the TUI interface
-tmlaunch config         # Show current configuration
-tmlaunch init-config    # Create default config file
-tmlaunch --help         # Show help
-tmlaunch --version      # Show version
+warpp                  # Launch the TUI interface
+warpp --new, -n        # Create new session in current directory
+warpp config           # Show current configuration
+warpp init-config      # Create default config file
+warpp test-ascii       # Test current ASCII art setting
+warpp --help           # Show help
+warpp --version        # Show version
 ```
 
 ### TUI Controls
 
 - `↑/↓` or `k/j` - Navigate between sessions
-- `Enter` - Launch selected session
+- `Enter` - Launch/attach to selected session
+- `K` - Kill selected session (with confirmation)
+- `n` - Create new session in current directory
 - `q` or `Ctrl+C` - Quit
-
-## Session Descriptions
-
-Add descriptions to your tmuxifier layouts by including comments:
-
-```bash
-#!/usr/bin/env bash
-# Description: My awesome web development environment
-
-# Your tmuxifier layout code here...
-```
-
-TMlaunch will automatically extract and display these descriptions in the interface.
 
 ## Configuration
 
-TMlaunch can be configured via a JSON config file at `~/.config/tmlaunch/config.json`.
-
-### Example config.json
+Config file location: `~/.config/warpp/config.json`
 
 ```json
 {
   "theme": "carbonfox",
-  "ascii_art": "tmlaunch"
+  "ascii_art": "fire"
 }
 ```
 
-### Available Options
+### Available Themes
 
-- `theme`: Theme to use for the interface
-  - `"default"` (default) - Clean, minimal theme
-  - `"carbonfox"` - Dark theme with blue accents
-  - `"kanagawa"` - Warm, nature-inspired theme
+- `default` - Clean, minimal theme
+- `carbonfox` - Dark theme with blue accents
+- `kanagawa` - Warm, nature-inspired theme
 
-- `ascii_art`: ASCII art style for the header
-  - `"tmlaunch"` (default) - Full TMLAUNCH banner
-  - `"simple"` - Compact box-drawing style
-  - `"minimal"` - Just text
-  - `"blocks"` - Block character style
-  - `"ThePersistenceOfMemory"` - Salvador Dali-inspired art
+### ASCII Art
 
-### Managing Configuration
+ASCII art animations are stored in `~/.config/warpp/ascii-art/`. Each animation is a folder containing numbered frames:
 
-```bash
-# Create a config file with defaults
-tmlaunch init-config
-
-# View current configuration
-tmlaunch config
-
-# Edit the config file manually
-$EDITOR ~/.config/tmlaunch/config.json
+```
+~/.config/warpp/ascii-art/
+  fire/
+    01.txt
+    02.txt
+    ...
+  blocks/
+    1.txt
 ```
 
-The config file is created automatically with default values if it doesn't exist.
+Available animations: `fire`, `blocks`, `minimal`
 
-## Requirements
+## How it Works
 
-Make sure you have tmuxifier properly configured with session layouts in `~/.tmuxifier/layouts/`. Each layout should be a `.session.sh` file containing your tmux session configuration.
+1. **Scans** your `~/.tmuxifier/layouts/` directory for `.session.sh` files
+2. **Checks** which sessions are currently running via `tmux list-sessions`
+3. **Displays** all sessions with live previews in a beautiful TUI
+4. **Launches** selected sessions using `tmuxifier load-session`
+5. **Attaches** to the session (or switches if already in tmux)
 
-## Example Tmuxifier Layout
+## Worktree Sessions
 
-```bash
-#!/usr/bin/env bash
-# Description: Web development environment
+When launching a layout that's already running, warpp offers to create a git worktree session:
 
-session_root "~/projects/myapp"
-
-if initialize_session "myapp"; then
-  new_window "editor"
-  run_cmd "vim ."
-  
-  new_window "server"
-  run_cmd "npm run dev"
-  
-  new_window "terminal"
-  
-  select_window 1
-fi
-
-finalize_and_go_to_session
-```
-
-## Contributing
-
-TMlaunch is an open-source project and contributions are welcome! You can help by:
-
-- 🎨 **Adding new themes** - Create new color schemes in `internal/themes/`
-- 🖼️ **Adding ASCII art** - Add new ASCII art files to `internal/themes/ascii-art/`
-- 🐛 **Fixing bugs** - Report issues and submit bug fixes
-- 📖 **Improving documentation** - Help make the docs clearer and more comprehensive
-- ✨ **Adding features** - Propose and implement new functionality
-
-To contribute:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+1. Enter a session name (e.g., `myproject-feature`)
+2. Enter a branch name (e.g., `feature/new-thing`)
+3. warpp creates the worktree and launches a new session in it
 
 ## License
 
-MIT License - see the LICENSE file for details.
+MIT License

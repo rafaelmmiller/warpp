@@ -3,46 +3,97 @@ package themes
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
-// GetASCIIArt returns the ASCII art for the given name
-func GetASCIIArt(name string) string {
-	// Try to read from the local directory first (for development/runtime changes)
-	filename := filepath.Join("internal", "themes", "ascii-art", name+".txt")
-
-	content, err := os.ReadFile(filename)
-	if err != nil {
-		// Fallback to hardcoded default if file not found
-		if name != "tmlaunch" {
-			return GetASCIIArt("tmlaunch")
-		}
-		// If even tmlaunch fails, return hardcoded fallback
-		return `████████╗███╗   ███╗██╗      █████╗ ██╗   ██╗███╗   ██╗ ██████╗██╗  ██╗
+var defaultASCIIArt = `████████╗███╗   ███╗██╗      █████╗ ██╗   ██╗███╗   ██╗ ██████╗██╗  ██╗
 ╚══██╔══╝████╗ ████║██║     ██╔══██╗██║   ██║████╗  ██║██╔════╝██║  ██║
    ██║   ██╔████╔██║██║     ███████║██║   ██║██╔██╗ ██║██║     ███████║
    ██║   ██║╚██╔╝██║██║     ██╔══██║██║   ██║██║╚██╗██║██║     ██╔══██║
    ██║   ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝██║ ╚████║╚██████╗██║  ██║
    ╚═╝   ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═╝`
+
+// GetASCIIArtFrames returns all animation frames for the given ASCII art name
+// Frames are loaded from ~/.config/warpp/ascii-art/<name>/*.txt sorted alphabetically
+func GetASCIIArtFrames(name string) []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return []string{defaultASCIIArt}
 	}
 
-	return strings.TrimRight(string(content), "\n\r")
+	artDir := filepath.Join(home, ".config", "warpp", "ascii-art", name)
+	entries, err := os.ReadDir(artDir)
+	if err != nil {
+		if name != "fire" {
+			return GetASCIIArtFrames("fire")
+		}
+		return []string{defaultASCIIArt}
+	}
+
+	// Collect and sort .txt files
+	var files []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".txt") {
+			files = append(files, entry.Name())
+		}
+	}
+	sort.Strings(files)
+
+	if len(files) == 0 {
+		if name != "fire" {
+			return GetASCIIArtFrames("fire")
+		}
+		return []string{defaultASCIIArt}
+	}
+
+	// Load each frame
+	var frames []string
+	for _, file := range files {
+		content, err := os.ReadFile(filepath.Join(artDir, file))
+		if err == nil {
+			frames = append(frames, strings.TrimRight(string(content), "\n\r"))
+		}
+	}
+
+	if len(frames) == 0 {
+		return []string{defaultASCIIArt}
+	}
+
+	return frames
 }
 
-// ListAvailableASCIIArt returns all available ASCII art names
+// GetASCIIArt returns the first frame of ASCII art (for backwards compatibility)
+func GetASCIIArt(name string) string {
+	frames := GetASCIIArtFrames(name)
+	if len(frames) > 0 {
+		return frames[0]
+	}
+	return defaultASCIIArt
+}
+
+// ListAvailableASCIIArt returns all available ASCII art names (directories in ascii-art folder)
 func ListAvailableASCIIArt() []string {
-	dirname := filepath.Join("internal", "themes", "ascii-art")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return []string{"fire"}
+	}
+
+	dirname := filepath.Join(home, ".config", "warpp", "ascii-art")
 	entries, err := os.ReadDir(dirname)
 	if err != nil {
-		return []string{"tmlaunch"}
+		return []string{"fire"}
 	}
 
 	var names []string
 	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), ".txt") {
-			name := strings.TrimSuffix(entry.Name(), ".txt")
-			names = append(names, name)
+		if entry.IsDir() {
+			names = append(names, entry.Name())
 		}
+	}
+
+	if len(names) == 0 {
+		return []string{"fire"}
 	}
 
 	return names
